@@ -13,6 +13,14 @@ CREATE TYPE season_stats AS (
     ast REAL
 );
 
+-- Create a scoring class enum type to grade players based on their scoring performance
+CREATE TYPE scoring_class AS ENUM (
+    'star',  -- Excellent
+    'good',  -- Good
+    'average',  -- Average
+    'bad',  -- Below Average
+);
+
 -- Create the main players table extracted from player_season table
 -- To group related column into a single value.
 CREATE TABLE players (
@@ -24,6 +32,7 @@ CREATE TABLE players (
     draft_round TEXT,
     draft_number TEXT,
     season_stats season_stats[],  -- array of composite type created earlier
+    scoring_class scoring_class,  -- enum type for player scoring classification
     current_season INTEGER,
     PRIMARY KEY(player_name, current_season) -- ensure each player and season pair are unique
 );
@@ -32,11 +41,11 @@ CREATE TABLE players (
 INSERT INTO players 
 WITH yesterday AS (
     SELECT * FROM players
-    WHERE current_season = 2001
+    WHERE current_season = 2005
 ),
 today AS (
     SELECT * FROM player_seasons
-    WHERE season = 2002
+    WHERE season = 2006
 )
 SELECT 
     COALESCE(t.player_name, y.player_name) AS player_name,
@@ -60,5 +69,20 @@ FULL OUTER JOIN yesterday y
     ON t.player_name = y.player_name;
 
 
+--------------------------------------------------------------------
+-- This query retrieves the player name and their season stats for a specific player in a specific season.
+-- It uses the UNNEST function to expand the array of season_stats into individual rows.
+WITH unnested AS (
+    SELECT player_name,
+            UNNEST(season_stats)::season_stats AS season_stats
+    FROM players
+    WHERE current_season = 2001 
+      AND player_name = 'Michael Jordan'
+)
+SELECT player_name,
+       (season_stats::season_stats).*
+FROM unnested;  
 
 
+
+SELECT max(current_season) FROM players;
