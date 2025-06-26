@@ -83,10 +83,3 @@ CASE WHEN t.season IS NOT NULL THEN
 FROM today t
 FULL OUTER JOIN yesterday y 
     ON t.player_name = y.player_name;
-
-
-
-
-
-
-
