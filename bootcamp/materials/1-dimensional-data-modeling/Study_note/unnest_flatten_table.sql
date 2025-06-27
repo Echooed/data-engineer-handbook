@@ -9,3 +9,21 @@ WITH unnested AS (
 SELECT player_name,
        (season_stats::season_stats).*
 FROM unnested; 
+
+
+-- This query uses the UNNEST function 
+--to expand the array of films into individual rows.
+
+WITH unnested AS (
+    SELECT actor,current_year,
+        UNNEST(films)::films  AS films
+    FROM actors WHERE actor = 'Brigitte Bardot'
+),
+inner_unnested AS  (
+    SELECT actor,
+        current_year,
+              (films::films).*
+    FROM unnested
+)
+SELECT * FROM inner_unnested;
+
