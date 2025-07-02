@@ -76,7 +76,3 @@ FULL JOIN yesterday y ON t.actor = y.actor;
 
 --TEST
 SELECT * FROM actors where actor_name = 'Brigitte Bardot';
-
-
-
-select * from actor_films limit 10;

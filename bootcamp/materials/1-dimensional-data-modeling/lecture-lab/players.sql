@@ -36,6 +36,7 @@ CREATE TABLE players (
     scoring_class scoring_class,  -- enum type for player scoring classification
     years_since_last_season INTEGER,  -- number of years since the last season played
     current_season INTEGER,
+    is_active BOOLEAN,  -- flag to indicate if the player is currently active
     PRIMARY KEY(player_name, current_season) -- ensure each player and season pair are unique
 );
 
