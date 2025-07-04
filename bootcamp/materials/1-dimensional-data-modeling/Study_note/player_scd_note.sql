@@ -12,25 +12,24 @@ CREATE TABLE player_scd (
     PRIMARY KEY(player_name, current_season)   
 );
 
+
 -- Insert SCD history based on changes to scoring_class and is_active
 -- Tracks changes in scoring_class and is_active over time per player
 INSERT INTO player_scd 
 
---Get current and previous season values per player using window functions
+-- Get current and previous season values per player using window functions
 WITH with_previous AS (
     SELECT
         player_name,
         scoring_class,
         is_active,
         current_season,
-
         -- Capture previous values for comparison
         LAG(scoring_class) OVER (PARTITION BY player_name ORDER BY current_season) AS previous_scoring_class,
         LAG(is_active) OVER (PARTITION BY player_name ORDER BY current_season) AS previous_is_active
     FROM players
     WHERE current_season <= 2021
 ),
-
 
 -- Identify change points (i.e., where scoring_class or is_active changed)
 with_indicators AS (
@@ -61,7 +60,12 @@ SELECT
     scoring_class, 
     is_active,
     MIN(current_season) AS start_season,   -- The first season of the streak
-    MAX(current_season) AS end_season,     -- The last season of the streak
+    
+    CASE 
+        WHEN MAX(current_season) = (SELECT MAX(current_season) FROM players)
+        THEN NULL
+        ELSE MAX(current_season)
+    END AS end_season,  -- If the streak is still ongoing (i.e., current season is the latest), set end_season to NULL
     MAX(current_season) AS current_season  -- Reference point for PK
 FROM with_streaks
 GROUP BY 1,2,3, streak_identifier
