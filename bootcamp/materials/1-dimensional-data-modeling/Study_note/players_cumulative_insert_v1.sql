@@ -87,10 +87,11 @@ SELECT
     -- Current season for this record
     w.season,
 
-    -- Flag if this season is the actor’s most recent active one
+    -- Flag if this season is the player’s most recent active one
     (seasons[CARDINALITY(seasons)]::season_stats).season = season AS is_active
 
 FROM windowed w
 JOIN static s
     ON w.player_name = s.player_name;
 
+ 

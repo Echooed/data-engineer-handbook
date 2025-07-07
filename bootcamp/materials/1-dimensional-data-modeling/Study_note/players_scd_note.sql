@@ -70,7 +70,3 @@ SELECT
 FROM with_streaks
 GROUP BY 1,2,3, streak_identifier
 ORDER BY player_name, start_season;
-
-
-
-SELECT * FROM player_scd;
