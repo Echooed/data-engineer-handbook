@@ -74,9 +74,3 @@ SELECT
 FROM today t
 FULL JOIN yesterday y ON t.actorid = y.actorid;
 
-
-
---TEST
-SELECT * FROM actors WHERE actor = 'David Warner';
-(t.year = EXTRACT(YEAR FROM CURRENT_DATE)::INT) AS is_active
-(seasons[CARDINALITY(seasons)]::season_stats).season = season AS is_active

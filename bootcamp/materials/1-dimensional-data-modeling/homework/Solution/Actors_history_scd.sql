@@ -12,7 +12,7 @@ CREATE TABLE actors_scd_history (
 );
 
 
-
+INSERT INTO actors_scd_history
 -- Get current and previous slowly changing value for each actor.
 WITH with_previous AS (
     SELECT 
@@ -51,7 +51,6 @@ SELECT
     is_active,
     MAX(current_year) AS current_year,
     MIN(current_year) AS start_year,
-
     CASE 
         WHEN MAX(current_year) = (SELECT MAX(current_year) FROM actors)
         THEN NULL

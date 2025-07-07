@@ -1,12 +1,12 @@
 -- consolidated player records into the 'players' table
 INSERT INTO players
--- CTE: Generate a list of seasons from 1996 to 2022
+-- Generate a list of seasons from 1996 to 2022
 WITH years AS (
     SELECT *
     FROM GENERATE_SERIES(1996, 2022) AS season
 ),
 
--- CTE: Find the first season each player appeared in
+-- Find the first season each player appeared in
 p AS (
     SELECT
         player_name,
@@ -15,7 +15,7 @@ p AS (
     GROUP BY player_name
 ),
 
--- CTE: Build a cross join of each player with every season from their first season onward
+-- Build a cross join of each player with every season from their first season onward
 players_and_seasons AS (
     SELECT *
     FROM p
@@ -23,7 +23,7 @@ players_and_seasons AS (
         ON p.first_season <= y.season
 ),
 
--- CTE: For each player and season, construct a cumulative array of season_stats up to that year
+-- For each player and season, construct a cumulative array of season_stats up to that year
 windowed AS (
     SELECT
         pas.player_name,
@@ -48,7 +48,7 @@ windowed AS (
     ORDER BY pas.player_name, pas.season
 ),
 
--- CTE: Get static (unchanging) player data like height, college, draft info
+-- Get static (unchanging) player data like height, college, draft info
 static AS (
     SELECT
         player_name,
