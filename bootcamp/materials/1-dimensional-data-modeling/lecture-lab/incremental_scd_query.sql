@@ -63,7 +63,8 @@ WITH last_season_scd AS (
         ON ls.player_name = ts.player_name
          WHERE (ts.scoring_class <> ls.scoring_class
           OR ts.is_active <> ls.is_active)
-     ),
+     )
+     select * from changed_records;
      unnested_changed_records AS (
 
          SELECT player_name,
@@ -86,7 +87,7 @@ WITH last_season_scd AS (
              ON ts.player_name = ls.player_name
          WHERE ls.player_name IS NULL
 
-     )
+     );
 
 
 SELECT *, 2022 AS current_season FROM (

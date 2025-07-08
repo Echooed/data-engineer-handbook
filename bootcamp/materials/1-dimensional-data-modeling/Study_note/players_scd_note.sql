@@ -1,8 +1,8 @@
-DROP TABLE IF EXISTS player_scd;
+DROP TABLE IF EXISTS players_scd;
 
 
 -- Create a table to track Slowly Changing Dimensions (SCD) of players
-CREATE TABLE player_scd (
+CREATE TABLE players_scd (
     player_name TEXT,
     scoring_class scoring_class, 
     is_active BOOLEAN,
@@ -15,7 +15,7 @@ CREATE TABLE player_scd (
 
 -- Insert SCD history based on changes to scoring_class and is_active
 -- Tracks changes in scoring_class and is_active over time per player
-INSERT INTO player_scd 
+INSERT INTO players_scd 
 
 -- Get current and previous season values per player using window functions
 WITH with_previous AS (
@@ -35,7 +35,7 @@ WITH with_previous AS (
 with_indicators AS (
     SELECT *,
         CASE 
-            -- Use IS DISTINCT FROM to safely compare even if NULLs are involved
+            -- use IS DISTINCT FROM to safely compare even if NULLs are involved
             WHEN previous_scoring_class IS DISTINCT FROM scoring_class THEN 1
             WHEN previous_is_active IS DISTINCT FROM is_active THEN 1
             ELSE 0
@@ -46,7 +46,7 @@ with_indicators AS (
 -- Create streak groups by summing change indicators (streak = unchanged values)
 with_streaks AS (
     SELECT *,
-        -- Each streak_identifier marks a continuous period of the same scoring_class and is_active
+        -- each streak_identifier marks a continuous period of the same scoring_class and is_active
         SUM(change_indicator) OVER (
             PARTITION BY player_name 
             ORDER BY current_season
@@ -59,14 +59,14 @@ SELECT
     player_name,
     scoring_class, 
     is_active,
-    MIN(current_season) AS start_season,   -- The first season of the streak
+    MIN(current_season) AS start_season,   -- the first season of the streak
     
     CASE 
         WHEN MAX(current_season) = (SELECT MAX(current_season) FROM players)
         THEN NULL
         ELSE MAX(current_season)
-    END AS end_season,  -- If the streak is still ongoing (i.e., current season is the latest), set end_season to NULL
-    MAX(current_season) AS current_season  -- Reference point for PK
+    END AS end_season,  -- if the streak is still ongoing (i.e., current season is the latest), set end_season to NULL
+    MAX(current_season) AS current_season  -- reference point for PK
 FROM with_streaks
 GROUP BY 1,2,3, streak_identifier
 ORDER BY player_name, start_season;
