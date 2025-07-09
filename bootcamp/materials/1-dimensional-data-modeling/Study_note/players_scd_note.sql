@@ -1,6 +1,5 @@
 DROP TABLE IF EXISTS players_scd;
 
-
 -- Create a table to track Slowly Changing Dimensions (SCD) of players
 CREATE TABLE players_scd (
     player_name TEXT,
@@ -9,16 +8,33 @@ CREATE TABLE players_scd (
     start_season INTEGER,       -- Season when the current classification began
     end_season INTEGER,         -- Season when it ended (if ever)
     current_season INTEGER,     -- The current reference season (used for tracking/inserts)
-    PRIMARY KEY(player_name, current_season)   
+    PRIMARY KEY(player_name, start_season)   -- Changed to start_season for better SCD Type 2 semantics
 );
 
-
--- Insert SCD history based on changes to scoring_class and is_active
+-- Insert SCD Type 2 history based on changes to scoring_class and is_active
 -- Tracks changes in scoring_class and is_active over time per player
-INSERT INTO players_scd 
+INSERT INTO players_scd (
+    player_name,
+    scoring_class,
+    is_active,
+    start_season,
+    end_season,
+    current_season
+)
 
--- Get current and previous season values per player using window functions
-WITH with_previous AS (
+-- Filter only records up to the selected snapshot season (e.g. 2021)
+WITH filtered_players AS (
+    SELECT
+        player_name,
+        scoring_class,
+        is_active,
+        current_season
+    FROM players
+    WHERE current_season <= 2021
+),
+
+-- Add previous row values using LAG to detect changes in dimension attributes
+with_previous AS (
     SELECT
         player_name,
         scoring_class,
@@ -27,46 +43,56 @@ WITH with_previous AS (
         -- Capture previous values for comparison
         LAG(scoring_class) OVER (PARTITION BY player_name ORDER BY current_season) AS previous_scoring_class,
         LAG(is_active) OVER (PARTITION BY player_name ORDER BY current_season) AS previous_is_active
-    FROM players
-    WHERE current_season <= 2021
+    FROM filtered_players
 ),
 
--- Identify change points (i.e., where scoring_class or is_active changed)
+-- Mark rows where a change in dimension attributes occurs
 with_indicators AS (
     SELECT *,
         CASE 
-            -- use IS DISTINCT FROM to safely compare even if NULLs are involved
-            WHEN previous_scoring_class IS DISTINCT FROM scoring_class THEN 1
-            WHEN previous_is_active IS DISTINCT FROM is_active THEN 1
+            -- Use IS DISTINCT FROM to safely compare even if NULLs are involved
+            WHEN previous_scoring_class IS DISTINCT FROM scoring_class 
+              OR previous_is_active IS DISTINCT FROM is_active 
+            THEN 1 
             ELSE 0
         END AS change_indicator
     FROM with_previous
 ),
 
--- Create streak groups by summing change indicators (streak = unchanged values)
+-- Use running sum to assign streak IDs for unchanged periods
 with_streaks AS (
     SELECT *,
-        -- each streak_identifier marks a continuous period of the same scoring_class and is_active
+        -- Each streak_identifier marks a continuous period of the same scoring_class and is_active
         SUM(change_indicator) OVER (
             PARTITION BY player_name 
             ORDER BY current_season
         ) AS streak_identifier
     FROM with_indicators
+),
+
+-- Get the maximum season in the snapshot to identify open-ended records
+max_season AS (
+    SELECT MAX(current_season) AS max_current_season 
+    FROM filtered_players
 )
 
--- Group by streak_identifier to extract SCD periods and compute the start and end season for each period of stability
+-- Aggregate streaks into start/end periods per player and dimension values
 SELECT
     player_name,
     scoring_class, 
     is_active,
-    MIN(current_season) AS start_season,   -- the first season of the streak
-    
+    MIN(current_season) AS start_season,     -- When this dimensional state started
     CASE 
-        WHEN MAX(current_season) = (SELECT MAX(current_season) FROM players)
-        THEN NULL
-        ELSE MAX(current_season)
-    END AS end_season,  -- if the streak is still ongoing (i.e., current season is the latest), set end_season to NULL
-    MAX(current_season) AS current_season  -- reference point for PK
+        WHEN MAX(current_season) = max_current_season THEN NULL  -- Open-ended streak
+        ELSE MAX(current_season)                                 -- Closed streak
+    END AS end_season,                       -- When this dimensional state ended (NULL if ongoing)
+    MAX(current_season) AS current_season    -- Latest season for this streak (for tracking)
 FROM with_streaks
-GROUP BY 1,2,3, streak_identifier
+CROSS JOIN max_season
+GROUP BY player_name, scoring_class, is_active, streak_identifier, max_current_season
 ORDER BY player_name, start_season;
+
+
+
+
+SELECT * FROM players_scd;

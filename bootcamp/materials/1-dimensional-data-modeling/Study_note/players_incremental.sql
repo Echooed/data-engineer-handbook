@@ -9,11 +9,13 @@ CREATE TYPE scd_type AS (
     end_season INTEGER
 );
 
+
+
 -- Get SCD records from the previous season (2021) that were still active that year
 WITH last_season_scd AS (
     SELECT * FROM players_scd
     WHERE current_season = 2021
-    AND end_season = 2021
+    AND (end_season IS NULL OR end_season = 2021)  --  consider scd open-endedness 
 ),
 
 -- Get historical SCD records that ended before 2021
@@ -26,7 +28,7 @@ historical_scd AS (
         end_season
     FROM players_scd
     WHERE current_season = 2021
-    AND end_season < 2021
+    AND end_season < 2021 AND end_season IS NOT NULL
 ),      
 
 -- Get player records for the current season (2022)
@@ -57,14 +59,14 @@ changed_records AS (
     SELECT 
         ts.player_name,
         UNNEST(ARRAY[
-            -- Old streak (ending in 2021)
+            -- old streak (ending in 2021)
             ROW(
                 ls.scoring_class, 
                 ls.is_active, 
                 ls.start_season, 
-                ls.end_season
+                2021
             )::scd_type,
-            -- New streak (starting in 2022)
+            -- new streak (starting in 2022)
             ROW(
                 ts.scoring_class, 
                 ts.is_active, 
@@ -86,7 +88,11 @@ unnested_changed_records AS (
         (records).scoring_class AS scoring_class,
         (records).is_active AS is_active,
         (records).start_season AS start_season,
-        (records).end_season AS end_season
+        (records).end_season AS end_season,
+        CASE                         -- use 2021 for old row, 2022 for new row
+            WHEN (records).start_season = 2022 THEN 2022
+            ELSE 2021
+        END AS current_season
     FROM changed_records
 ),
 
@@ -113,4 +119,7 @@ SELECT *, 2022 AS current_season FROM (
     SELECT * FROM unnested_changed_records
     UNION ALL       
     SELECT * FROM new_records
-) union_records;
+) union_records
+ORDER BY player_name, start_season;
+
+
