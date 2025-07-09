@@ -94,7 +94,8 @@ actors_new_records AS (
 )
 
 -- Final union of all record types
-SELECT * FROM (
+SELECT *
+FROM  (
     SELECT * FROM actors_historical_scd
     UNION ALL
     SELECT * FROM actors_unchanged_records
