@@ -32,7 +32,7 @@ WITH filtered_actors AS (
         is_active,
         current_year
     FROM actors
-    WHERE current_year <= 2021 
+    WHERE current_year <= 2020 
 ),
 
 -- Add previous row values using LAG to detect changes in dimension attributes
