@@ -773,3 +773,36 @@ SELECT * FROM unnested_changed_records
 UNION ALL
 SELECT * FROM new_records;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

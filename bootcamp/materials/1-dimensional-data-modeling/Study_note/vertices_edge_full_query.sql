@@ -74,7 +74,7 @@ SELECT
         'total_points', total_points,
         'team', teams
     ) AS properties
-FROM players_agg
+FROM players_agg;
 
 
 ---
@@ -154,17 +154,6 @@ AND f1.player_name <> f2.player_name;
 
 ---
 
-SELECT v.properties->>'player_name',
-    MAX(e.properties->>'pts')
-FROM vertices v
-    JOIN edges e ON v.identifier = e.subject_identifier
-    AND e.subject_type = v.type
-GROUP BY 1
-ORDER BY 2 DESC;
-
-
----
-
 
 WITH player_max_points AS (
     SELECT  
@@ -240,6 +229,7 @@ SELECT
     'player'::vertex_type AS object_type,
     relationship AS edge_type,
     json_build_object(
+        'object_player_name', object_player_name,
         'num_games', num_games,
         'subject_points', subject_points,
         'object_points', object_points
@@ -247,7 +237,23 @@ SELECT
 FROM aggregated;
 
 
-SELECT * FROM edges LIMIT 1000;
+
+
+SELECT 
+  v.properties->> 'player_name' AS player_name,
+  e.object_identifier AS object_player_id,
+  -- Corrected: total_points / number_of_games
+  COALESCE(
+    CAST((v.properties->>'total_points') AS REAL) / NULLIF(CAST((v.properties->>'number_of_games') AS REAL), 0),
+    0
+  ) AS ave_points,
+  e.properties->>'subject_points' AS subject_points,
+  e.properties->>'num_games' AS num_games
+FROM vertices v
+JOIN edges e 
+  ON v.identifier = e.subject_identifier 
+  AND e.subject_type = v.type
+WHERE e.object_type = 'player'::vertex_type;
 
 
 
@@ -308,12 +314,26 @@ SELECT * FROM edges LIMIT 1000;
 
 
 
-
+-- SELECT 
+-- v.properties->> 'player_name',
+-- e.object_identifier,
+-- CAST((v.properties->>'number_of_games')::REAL) / CASE WHEN CAST((V.properties->>'total_points')::REAL) = 0
+-- THEN 1
+-- ELSE CAST((v.properties->>'total_points')::REAL) END AS ave_points,
+-- e.properties->>'subject_points',
+-- e.properties->>'num_games'
+-- FROM vertices v 
+-- JOIN edges e 
+--     ON v.identifier = e.subject_identifier 
+--     AND e.subject_type = v.type
+-- WHERE e.object_type = 'player'::vertex_type
+-- GROUP BY v.properties->>'player_name';
 
 
 SELECT player_name, SUM(pts) FROM game_details GROUP BY Player_name LIMIT 50;
 
-SELECT DISTINCT(nickname), yearfounded FROM teams
+SELECT_type: EDGE_TYPE                 # Relationship type (e.g., "purchased", "follows")
+--   properties: MAP<STRING, STRING>      # Edge metadata (timestamp, context, etc.) DISTINCT(nickname), yearfounded FROM teams
 
 SELECT * FROM games;
 
@@ -337,5 +357,4 @@ SELECT type, count(1) FROM vertices group by 1;
 --   subject_type: VERTEX_TYPE            # Source vertex type (e.g., "user")
 --   object_identifier: STRING            # Target vertex ID
 --   object_type: VERTEX_TYPE             # Target vertex type (e.g., "product")
---   edge_type: EDGE_TYPE                 # Relationship type (e.g., "purchased", "follows")
---   properties: MAP<STRING, STRING>      # Edge metadata (timestamp, context, etc.)
+--   edge
