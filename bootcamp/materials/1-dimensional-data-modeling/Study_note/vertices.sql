@@ -1,3 +1,9 @@
+DROP TABLE IF EXISTS edges CASCADE;
+DROP TABLE IF EXISTS vertices CASCADE;
+
+
+
+
 CREATE TYPE vertex_type AS ENUM(
     'player', 
     'team', 
@@ -19,7 +25,6 @@ CREATE TYPE edge_type AS ENUM(
     'plays_in'
 );
 
-DROP TABLE IF EXISTS edges CASCADE;
 CREATE TABLE edges (
     subject_identifier TEXT,
     subject_type vertex_type,
@@ -103,7 +108,7 @@ WITH game_details_deduped AS(
                 ROW_NUMBER() 
                 OVER(PARTITION BY player_id, game_id) AS row_num
         FROM game_details
-)
+),
     filtered_deduped_game_details AS (
         SELECT * FROM game_details_deduped 
         WHERE row_num = 1
@@ -122,6 +127,17 @@ SELECT
     ) AS properties
 FROM filtered_deduped_game_details;
 
+SELECT 
+    f1.player_name,
+    f1.team_abbreviation,
+    f2.player_name,
+    f2.team_abbreviation
+FROM filtered_deduped_game_details f1 
+JOIN filtered_deduped_game_details f2
+ON f1.game_id = f2.game_id
+AND f1.player_name <> f2.player_name;
+
+
 
 
 ---
@@ -136,7 +152,7 @@ ORDER BY 2 DESC;
 
 
 ---
-ggggg
+
 
 WITH player_max_points AS (
     SELECT  
@@ -147,14 +163,36 @@ JOIN edges e
     ON v.identifier = e.subject_identifier 
     AND e.subject_type = v.type
 GROUP BY v.properties->>'player_name'
-ORDER BY max_points DESC)
+ORDER BY max_points DESC
+)
 
 SELECT * 
 FROM player_max_points 
 WHERE max_points IS NOT NULL;
 
 
+-- play against players
+CREATE VIEW filtered_deduped_game_details AS
+WITH game_details_deduped AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY player_id, game_id) AS row_num
+    FROM game_details
+)
+SELECT *
+FROM game_details_deduped
+WHERE row_num = 1;
 
+s
+
+SELECT 
+    f1.player_name,
+    f1.team_abbreviation,
+    f2.player_name,
+    f2.team_abbreviation
+FROM filtered_deduped_game_details f1 
+JOIN filtered_deduped_game_details f2
+ON f1.game_id = f2.game_id
+AND f1.player_name <> f2.player_name;
 
 
 
