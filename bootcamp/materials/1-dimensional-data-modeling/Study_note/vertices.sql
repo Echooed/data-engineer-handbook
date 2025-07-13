@@ -127,6 +127,20 @@ SELECT
     ) AS properties
 FROM filtered_deduped_game_details;
 
+
+
+-- play against players
+
+WITH game_details_deduped AS(
+        SELECT *,
+                ROW_NUMBER() 
+                OVER(PARTITION BY player_id, game_id) AS row_num
+        FROM game_details
+),
+    filtered_deduped_game_details AS (
+        SELECT * FROM game_details_deduped 
+        WHERE row_num = 1
+    )
 SELECT 
     f1.player_name,
     f1.team_abbreviation,
@@ -141,12 +155,12 @@ AND f1.player_name <> f2.player_name;
 
 
 ---
+
 SELECT v.properties->>'player_name',
     MAX(e.properties->>'pts')
 FROM vertices v
     JOIN edges e ON v.identifier = e.subject_identifier
     AND e.subject_type = v.type
-WHERE player_name = 'Michael Jor'
 GROUP BY 1
 ORDER BY 2 DESC;
 
@@ -171,28 +185,10 @@ FROM player_max_points
 WHERE max_points IS NOT NULL;
 
 
--- play against players
-CREATE VIEW filtered_deduped_game_details AS
-WITH game_details_deduped AS (
-    SELECT *,
-           ROW_NUMBER() OVER (PARTITION BY player_id, game_id) AS row_num
-    FROM game_details
-)
-SELECT *
-FROM game_details_deduped
-WHERE row_num = 1;
 
-s
 
-SELECT 
-    f1.player_name,
-    f1.team_abbreviation,
-    f2.player_name,
-    f2.team_abbreviation
-FROM filtered_deduped_game_details f1 
-JOIN filtered_deduped_game_details f2
-ON f1.game_id = f2.game_id
-AND f1.player_name <> f2.player_name;
+
+
 
 
 
