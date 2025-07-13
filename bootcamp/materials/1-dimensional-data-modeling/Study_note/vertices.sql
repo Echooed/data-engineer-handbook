@@ -2,8 +2,6 @@ DROP TABLE IF EXISTS edges CASCADE;
 DROP TABLE IF EXISTS vertices CASCADE;
 
 
-
-
 CREATE TYPE vertex_type AS ENUM(
     'player', 
     'team', 
@@ -189,12 +187,67 @@ WHERE max_points IS NOT NULL;
 
 
 
+-- Insert player-to-player relationships into edges table
+INSERT INTO edges
+WITH game_details_deduped AS (
+    -- Deduplicate player-game entries
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY player_id, game_id) AS row_num
+    FROM game_details
+),
+
+filtered_deduped_game_details AS (
+    -- Keep only one entry per player-game pair
+    SELECT * 
+    FROM game_details_deduped 
+    WHERE row_num = 1
+),
+
+aggregated AS (
+    -- For each pair of players in the same game, classify relationship
+    SELECT 
+        f1.player_id AS subject_player_id,
+        MAX(f1.player_name) AS subject_player_name,
+
+        -- Determine relationship type
+        CASE 
+            WHEN f1.team_abbreviation = f2.team_abbreviation THEN 'plays_with'::edge_type
+            ELSE 'plays_against'::edge_type
+        END AS relationship,
+
+        f2.player_id AS object_player_id,
+        MAX(f2.player_name) AS object_player_name,
+
+        -- Aggregated stats for the relationship
+        COUNT(*) AS num_games,
+        SUM(f1.pts) AS subject_points,
+        SUM(f2.pts) AS object_points
+
+    FROM filtered_deduped_game_details f1
+    JOIN filtered_deduped_game_details f2
+        ON f1.game_id = f2.game_id
+       AND f1.player_id <> f2.player_id
+       AND f1.player_id > f2.player_id  -- prevent duplicates and self-joins
+
+    GROUP BY f1.player_id, f2.player_id, relationship
+)
+
+-- Final insert into the edges table
+SELECT
+    subject_player_id AS subject_identifier,
+    'player'::vertex_type AS subject_type,
+    object_player_id AS object_identifier,
+    'player'::vertex_type AS object_type,
+    relationship AS edge_type,
+    json_build_object(
+        'num_games', num_games,
+        'subject_points', subject_points,
+        'object_points', object_points
+    ) AS properties
+FROM aggregated;
 
 
-
-
-
-
+SELECT * FROM edges LIMIT 1000;
 
 
 
