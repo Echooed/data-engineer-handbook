@@ -28,3 +28,5 @@ JOIN edges e
     ON v.identifier = e.subject_identifier
     AND v.type = e.subject_type
 WHERE e.object_type = 'player'::vertex_type;
+
+
