@@ -118,5 +118,3 @@ SELECT *, 2022 AS current_season FROM (
 ) union_records
 ORDER BY player_name, start_season;
 
-
-SELECT version() AS db_version;
