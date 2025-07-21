@@ -1,4 +1,21 @@
-           AS dim_player_name,
+          
+INSERT INTO fct_game_details
+WITH deduped_game_details AS (
+    SELECT 
+        g.game_date_est,
+        g.season,
+        g.home_team_id,
+        gd.*,
+        ROW_NUMBER() OVER (PARTITION BY gd.game_id, player_id, team_id) AS row_num 
+    FROM game_details gd
+    JOIN games g ON gd.game_id = g.game_id
+)
+SELECT 
+    game_date_est                                        AS dim_game_date, 
+    season                                               AS dim_season, 
+    team_id                                              AS dim_team_id,
+    player_id                                            AS dim_player_id,
+    player_name                                          AS dim_player_name,
     start_position                                       AS dim_start_position,
     team_id = home_team_id                               AS dim_is_playing_at_home,
     COALESCE(POSITION('DNP' IN comment), 0) > 0          AS did_not_play,
@@ -26,3 +43,6 @@
 FROM
      deduped_game_details
 WHERE row_num = 1;
+
+
+SELECT * FROM fct_game_details;
