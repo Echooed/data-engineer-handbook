@@ -8,3 +8,4 @@ SELECT
     COUNT(CASE WHEN dim_not_with_team THEN 1 END) AS not_with_team_count
 FROM fct_game_details
 GROUP BY dim_player_name;
+

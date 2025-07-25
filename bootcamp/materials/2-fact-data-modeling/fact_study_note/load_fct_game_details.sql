@@ -1,4 +1,3 @@
-          
 INSERT INTO fct_game_details
 WITH deduped_game_details AS (
     SELECT 
@@ -21,9 +20,8 @@ SELECT
     COALESCE(POSITION('DNP' IN comment), 0) > 0          AS did_not_play,
     COALESCE(POSITION('DND' IN comment), 0) > 0          AS did_not_dress,
     COALESCE(POSITION('NWT' IN comment), 0) > 0          AS not_with_team,
-    -- Convert time string (MM:SS) to decimal minutes
-    ROUND(((SPLIT_PART(min, ':', 1)::REAL +
-    (SPLIT_PART(min, ':', 2)::REAL) / 60))::NUMERIC, 5) AS m_minutes_played,
+    ROUND(((SPLIT_PART(min, ':', 1)::REAL + 
+    (SPLIT_PART(min, ':', 2)::REAL) / 60))::NUMERIC, 5) AS m_minutes_played,                         -- Convert time string (MM:SS) to decimal minutes
     fgm                                                 AS m_field_goals_made,
     fga                                                 AS m_field_goals_attempted,
     fg3m                                                AS m_three_point_field_goals_made,
@@ -45,4 +43,3 @@ FROM
 WHERE row_num = 1;
 
 
-SELECT * FROM fct_game_details;
