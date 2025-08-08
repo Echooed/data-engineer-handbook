@@ -68,20 +68,25 @@ SELECT
     END AS daily_active_state,
 
     -- Weekly active classification (fixed)
-    CASE
-        WHEN y.user_id IS NULL AND t.user_id IS NOT NULL THEN 'new'
-        WHEN COALESCE(t.today_date, y.last_active_date) > y.date - INTERVAL '6 days' THEN 'retained'
-        WHEN y.last_active_date < t.today_date - INTERVAL '7 days' AND t.user_id IS NOT NULL THEN 'reactivated'
-        WHEN t.today_date IS NULL AND y.last_active_date < t.today_date - INTERVAL '6 days' 
-             AND y.last_active_date > t.today_date - INTERVAL '14 days' THEN 'churned'
-        WHEN t.user_id IS NULL AND y.last_active_date < t.today_date - INTERVAL '13 days' THEN 'stale'
-        ELSE 'logic_error_uncaught_case'
-    END AS weekly_active_state,
+   CASE
+    WHEN y.user_id IS NULL AND t.user_id IS NOT NULL THEN 'new'
+    WHEN t.user_id IS NOT NULL AND y.last_active_date >= DATE y.date-iTERVAL '7 days' THEN 'retained'
+    WHEN t.user_id IS NOT NULL AND y.last_active_date < DATE y.date INTERVAL '7 days' THEN 'reactivated'
+    WHEN t.user_id IS NULL AND y.last_active_date >= DATE y.date INTERVAL '7 days' THEN 'churned'
+    WHEN t.user_id IS NULL AND y.last_active_date < DATE y.date  INTERVAL '7 days' THEN 'stale'
+    
+    -- Explicit data quality checks
+    WHEN y.last_active_date IS NULL THEN 'data_error_null_date'
+    WHEN y.user_id IS NULL AND t.user_id IS NULL THEN 'data_error_both_null'
+    
+    ELSE 'truly_unknown'
+END AS weekly_active_state
+END AS weekly_active_state
     -- Append today's date if active, else keep old array
   COALESCE(y.dates_active_list, ARRAY[]::DATE[]) ||
 CASE
     WHEN t.today_date IS NOT NULL THEN ARRAY[t.today_date::DATE]
-    ELSE ARRAY[]::DATE[]
+    ELSE ARRAY[]::DATE[]  
 END AS dates_active_list,
     -- Store the date snapshot for this record
     COALESCE(t.today_date, y.date + INTERVAL '1 day')::DATE AS date
@@ -90,48 +95,4 @@ FULL OUTER JOIN yesterday y ON y.user_id = t.user_id;
 
 
 
-
-
-
--- SELECT * FROM users_growth_accounting WHERE date = DATE '2023-01-17'
-
-
-
-
-
--- SELECT UNNEST(dates_active_list) FROM users_growth_accounting
--- where user_id = '3072521795088519000'
-
-
-
--- COALESCE(y.dates_active_list, ARRAY[]::DATE[]) || 
--- COALESCE(t.today_dates, ARRAY[]::DATE[]) AS dates_active_list
-
-
-
-
-
--- SHOW timezone;
--- SELECT t.today_date, t.today_date::DATE
--- FROM (
---     SELECT DATE_TRUNC('day', event_time::TIMESTAMP)::DATE AS today_date
---     FROM events 
---     WHERE CAST(user_id AS TEXT) = '14434469444350800000'
---     LIMIT 1
--- ) t;
-
-
--- SELECT user_id, first_active_date, last_active_date, dates_active_list, date
--- FROM users_growth_accounting 
--- WHERE date = DATE '2022-12-31' 
---   AND user_id = '14434469444350800000';
-
-
---   SELECT COUNT(*)
--- FROM events 
--- WHERE DATE_TRUNC('day', event_time::TIMESTAMP)::DATE = DATE '2023-01-01'
---   AND CAST(user_id AS TEXT) = '14434469444350800000';
-
-
-
-
+- TERVAL '7 days' THEN
