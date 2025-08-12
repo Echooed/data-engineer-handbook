@@ -1,8 +1,3 @@
--- Improved web analytics query addressing performance, data quality, and business logic issues
--- Parameters that should be configurable
--- @start_date: Start of analysis period (e.g., '2024-01-01')
--- @end_date: End of analysis period (e.g., '2024-12-31')
-
 WITH cleaned_events AS (
     -- Data quality and performance improvements
     SELECT 
@@ -178,25 +173,24 @@ ORDER BY attribution_model, unique_users DESC;
 -- Additional query for conversion funnel analysis
 -- This can be run separately to understand user journey patterns
 WITH cleaned_events AS (
-    -- Data quality and performance improvements
     SELECT 
-    e.user_id,
-    e.device_id,
-    e.event_time,
-    -- Clean and normalize URLs
-    CASE 
-        WHEN lower(trim(e.url)) LIKE '/signup%'  THEN '/signup'
-        WHEN lower(trim(e.url)) LIKE '/contact%' THEN '/contact'
-        WHEN lower(trim(e.url)) LIKE '/login%'   THEN '/login'
-        ELSE lower(trim(e.url))
-    END AS normalized_url,
-    -- Extract domain from referrer for better categorization (Postgres)
-    CASE
-        WHEN coalesce(trim(e.referrer), '') = '' THEN NULL
-        WHEN lower(trim(e.referrer)) LIKE 'http%' THEN
-            substring(e.referrer FROM '^https?://(?:www\. )?([^/]+)')  -- capture domain
-        ELSE e.referrer
-    END AS referrer_domain
+        e.user_id,
+        e.device_id,
+        e.event_time,
+        -- Clean and normalize URLs
+        CASE 
+            WHEN lower(trim(e.url)) LIKE '/signup%'  THEN '/signup'
+            WHEN lower(trim(e.url)) LIKE '/contact%' THEN '/contact'
+            WHEN lower(trim(e.url)) LIKE '/login%'   THEN '/login'
+            ELSE lower(trim(e.url))
+        END AS normalized_url,
+        -- Extract domain from referrer for better categorization (Postgres)
+        CASE
+            WHEN coalesce(trim(e.referrer), '') = '' THEN NULL
+            WHEN lower(trim(e.referrer)) LIKE 'http%' THEN
+                substring(e.referrer FROM '^https?://(?:www\. )?([^/]+)')  
+            ELSE e.referrer
+        END AS referrer_domain
 FROM events e
 WHERE e.event_time::timestamp >= TIMESTAMP '2023-01-01 00:00:00'
   AND e.event_time::timestamp <  TIMESTAMP '2023-02-01 00:00:00'
@@ -265,7 +259,9 @@ user_summary AS (
         MAX(event_time) as last_visit
     FROM user_sessions
     GROUP BY user_id, browser_type, os_type, first_touch_referrer, last_touch_referrer
-),
+)
+SELECT * FROM user_summary WHERE user_id = '568596539987322000';
+
 conversion_funnel AS (
     SELECT 
         first_touch_referrer,
@@ -276,7 +272,7 @@ conversion_funnel AS (
     FROM user_summary
     GROUP BY first_touch_referrer
 )
-SELECT 
+SELECT  
     first_touch_referrer,
     total_users,
     contacted,

@@ -28,7 +28,8 @@ SELECT
         COUNT(1) AS no_of_site_hits,
         COUNT(CASE WHEN url LIKE '/signup'THEN 1 END) AS no_of_signups,
         COUNT(CASE WHEN url LIKE '/contact' THEN 1 END) AS no_of_contact_visits,
-        COUNT(CASE WHEN url LIKE '/login' THEN 1 END) AS no_of_login_visits
+        COUNT(CASE WHEN url LIKE '/login' THEN 1 END) AS no_of_login_visits,
+        CAST(COUNT(CASE WHEN url = '/signup' THEN 1 END )AS REAL)/COUNT(1) AS pct_visited_signup
     FROM event_device_deduped 
     WHERE rn = 1
     GROUP BY GROUPING SETS (
@@ -38,7 +39,8 @@ SELECT
         (referrer_mapped),
         ()
     )
-ORDER BY COUNT(1) DESC;
+--HAVING COUNT(1) = 100
+ORDER BY CAST(COUNT(CASE WHEN url = '/signup' THEN 1 END )AS REAL)/COUNT(1) DESC;
 
 
 
