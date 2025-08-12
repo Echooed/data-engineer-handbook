@@ -1,77 +1,289 @@
--- Run just the SELECT part without INSERT to see what you get
-WITH yesterday AS (
-    SELECT * 
-    FROM users_growth_accounting
-    WHERE date = DATE '2022-12-31'
-),
-today AS (
+-- Improved web analytics query addressing performance, data quality, and business logic issues
+-- Parameters that should be configurable
+-- @start_date: Start of analysis period (e.g., '2024-01-01')
+-- @end_date: End of analysis period (e.g., '2024-12-31')
+
+WITH cleaned_events AS (
+    -- Data quality and performance improvements
     SELECT 
-        CAST(user_id AS TEXT) AS user_id,
-        DATE_TRUNC('day', event_time::TIMESTAMP)::DATE AS today_date
-    FROM events
-    WHERE DATE_TRUNC('day', event_time::TIMESTAMP)::DATE = DATE '2023-01-01'
-      AND user_id IS NOT NULL
-    GROUP BY user_id, DATE_TRUNC('day', event_time::TIMESTAMP)::DATE
-)
-SELECT
-    COALESCE(y.user_id, t.user_id) AS user_id,
-    COALESCE(y.dates_active_list, ARRAY[]::DATE[]) || 
+    e.user_id,
+    e.device_id,
+    e.event_time,
+    -- Clean and normalize URLs
     CASE 
-        WHEN t.user_id IS NOT NULL 
-            THEN ARRAY[t.today_date::DATE]
-        ELSE ARRAY[]::DATE[]
-    END AS dates_active_list
-FROM today t
-FULL OUTER JOIN yesterday y ON y.user_id = t.user_id
-WHERE COALESCE(y.user_id, t.user_id) = '14434469444350800000';
-
-
-
-INSERT INTO users_growth_accounting 
-WITH yesterday AS (
-    SELECT * FROM users_growth_accounting
-    WHERE date = DATE('2023-01-03')
+        WHEN lower(trim(e.url)) LIKE '/signup%'  THEN '/signup'
+        WHEN lower(trim(e.url)) LIKE '/contact%' THEN '/contact'
+        WHEN lower(trim(e.url)) LIKE '/login%'   THEN '/login'
+        ELSE lower(trim(e.url))
+    END AS normalized_url,
+    -- Extract domain from referrer for better categorization (Postgres)
+    CASE
+        WHEN coalesce(trim(e.referrer), '') = '' THEN NULL
+        WHEN lower(trim(e.referrer)) LIKE 'http%' THEN
+            substring(e.referrer FROM '^https?://(?:www\. )?([^/]+)')  -- capture domain
+        ELSE e.referrer
+    END AS referrer_domain
+FROM events e
+WHERE e.event_time::timestamp >= TIMESTAMP '2023-01-01 00:00:00'
+  AND e.event_time::timestamp <  TIMESTAMP '2023-02-01 00:00:00'
+  AND e.user_id IS NOT NULL
+  AND e.url IS NOT NULL
 ),
-    today AS (
-        SELECT
-        CAST(user_id AS TEXT) as user_id,
-        DATE_TRUNC('day', event_time::timestamp)::DATE as today_date,
-        COUNT(1)
-        FROM events
-        WHERE DATE_TRUNC('day', event_time::timestamp)::DATE = DATE('2023-01-04')
-        AND user_id IS NOT NULL
-        GROUP BY user_id, DATE_TRUNC('day', event_time::timestamp)
-    )
+
+referrer_mapped AS (
+    SELECT *,
+        CASE 
+            WHEN referrer_domain IN ('zachwilson.com', 'eczachly.com') THEN 'on-site'
+            WHEN referrer_domain IN ('t.co', 'twitter.com', 'x.com') THEN 'x.com'
+            WHEN referrer_domain LIKE '%google.%' OR referrer_domain = 'google.com' THEN 'google'
+            WHEN referrer_domain LIKE '%linkedin.%' OR referrer_domain = 'linkedin.com' THEN 'linkedin'
+            WHEN referrer_domain LIKE '%youtube.%' OR referrer_domain = 'youtube.com' THEN 'youtube'
+            WHEN referrer_domain LIKE '%bing.%' OR referrer_domain = 'bing.com' THEN 'bing'
+            WHEN referrer_domain LIKE '%facebook.%' OR referrer_domain = 'facebook.com' THEN 'facebook'
+            WHEN referrer_domain LIKE '%instagram.%' OR referrer_domain = 'instagram.com' THEN 'instagram'
+            WHEN referrer_domain LIKE '%reddit.%' OR referrer_domain = 'reddit.com' THEN 'reddit'
+            WHEN referrer_domain LIKE '%tiktok.%' OR referrer_domain = 'tiktok.com' THEN 'tiktok'
+            WHEN referrer_domain IS NULL THEN 'direct'
+            ELSE 'others'
+        END AS referrer_category
+    FROM cleaned_events
+),
+user_sessions AS (
+    -- Better approach: Analyze complete user journeys instead of just first events
+    SELECT 
+        rm.user_id,
+        d.browser_type,
+        d.os_type,
+        -- First touch attribution
+        FIRST_VALUE(rm.referrer_category) OVER (
+            PARTITION BY rm.user_id 
+            ORDER BY rm.event_time 
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS first_touch_referrer,
+        -- Last touch attribution  
+        LAST_VALUE(rm.referrer_category) OVER (
+            PARTITION BY rm.user_id 
+            ORDER BY rm.event_time 
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS last_touch_referrer,
+        rm.normalized_url,
+        rm.event_time,
+        -- Session indicators
+        ROW_NUMBER() OVER (PARTITION BY rm.user_id ORDER BY rm.event_time) as event_sequence
+    FROM referrer_mapped rm
+    JOIN devices d ON rm.device_id = d.device_id
+),
+
+user_summary AS (
+    -- Aggregate user-level metrics
+    SELECT 
+        user_id,
+        browser_type,
+        os_type,
+        first_touch_referrer,
+        last_touch_referrer,
+        COUNT(*) as total_page_views,
+        COUNT(DISTINCT normalized_url) as unique_pages_visited,
+        MAX(CASE WHEN normalized_url = '/signup' THEN 1 ELSE 0 END) as converted_signup,
+        MAX(CASE WHEN normalized_url = '/contact' THEN 1 ELSE 0 END) as visited_contact,
+        MAX(CASE WHEN normalized_url = '/login' THEN 1 ELSE 0 END) as visited_login,
+        MIN(event_time) as first_visit,
+        MAX(event_time) as last_visit
+    FROM user_sessions
+    GROUP BY user_id, browser_type, os_type, first_touch_referrer, last_touch_referrer
+)
+
+-- Final aggregation with multiple attribution models
+SELECT 
+    'first_touch' as attribution_model,
+    COALESCE(first_touch_referrer, '(overall)') AS referrer,
+    COALESCE(browser_type, '(overall)') AS browser_type,
+    COALESCE(os_type, '(overall)') AS os_type,
+    
+    -- User-based metrics (more accurate)
+    COUNT(DISTINCT user_id) AS unique_users,
+    SUM(total_page_views) AS total_page_views,
+    ROUND(AVG(total_page_views), 2) AS avg_pages_per_user,
+    
+    -- Conversion metrics  
+    SUM(converted_signup) AS users_who_signed_up,
+    ROUND(100.0 * SUM(converted_signup) / COUNT(DISTINCT user_id), 2) AS signup_conversion_rate,
+    SUM(visited_contact) AS users_who_visited_contact,
+    SUM(visited_login) AS users_who_visited_login,
+    
+    -- Engagement metrics
+    ROUND(AVG(unique_pages_visited), 2) AS avg_unique_pages_per_user
+FROM user_summary
+GROUP BY GROUPING SETS (
+    (first_touch_referrer, browser_type, os_type),
+    (first_touch_referrer, browser_type),
+    (first_touch_referrer, os_type), 
+    (browser_type, os_type),
+    (first_touch_referrer),
+    (browser_type),
+    (os_type),
+    ()
+)
+
+UNION ALL
+
+-- Last touch attribution analysis
+SELECT 
+    'last_touch' as attribution_model,
+    COALESCE(last_touch_referrer, '(overall)') AS referrer,
+    COALESCE(browser_type, '(overall)') AS browser_type,
+    COALESCE(os_type, '(overall)') AS os_type,
+    
+    COUNT(DISTINCT user_id) AS unique_users,
+    SUM(total_page_views) AS total_page_views,
+    ROUND(AVG(total_page_views), 2) AS avg_pages_per_user,
+    
+    SUM(converted_signup) AS users_who_signed_up,
+    ROUND(100.0 * SUM(converted_signup) / COUNT(DISTINCT user_id), 2) AS signup_conversion_rate,
+    SUM(visited_contact) AS users_who_visited_contact,
+    SUM(visited_login) AS users_who_visited_login,
+    
+    ROUND(AVG(unique_pages_visited), 2) AS avg_unique_pages_per_user
+FROM user_summary  
+GROUP BY GROUPING SETS (
+    (last_touch_referrer, browser_type, os_type),
+    (last_touch_referrer, browser_type),
+    (last_touch_referrer, os_type),
+    (browser_type, os_type), 
+    (last_touch_referrer),
+    (browser_type),
+    (os_type),
+    ()
+)
+
+ORDER BY attribution_model, unique_users DESC;
 
 
-    SELECT COALESCE(t.user_id, y.user_id)                    as user_id,
-        COALESCE(y.first_active_date, t.today_date)       AS first_active_date,
-        COALESCE(t.today_date, y.last_active_date)        AS last_active_date,
-        CASE
-            WHEN y.user_id IS NULL THEN 'New'
-            WHEN y.last_active_date = t.today_date - Interval '1 day' THEN 'Retained'
-            WHEN y.last_active_date < t.today_date - Interval '1 day' THEN 'Resurrected'
-            WHEN t.today_date IS NULL AND y.last_active_date = y.date THEN 'Churned'
-            ELSE 'Stale'
-            END                                           as daily_active_state,
-        CASE
-            WHEN y.user_id IS NULL THEN 'New'
-            WHEN y.last_active_date < t.today_date - Interval '7 day' THEN 'Resurrected'
-            WHEN t.today_date IS NULL
-                AND y.last_active_date = y.date - interval '7 day' THEN 'Churned'
-            WHEN COALESCE(t.today_date, y.last_active_date) + INTERVAL '7 day' >= y.date THEN 'Retained'
-            ELSE 'Stale'
-            END                                           as weekly_active_state,
-    ARRAY_CAT(
-    ARRAY(SELECT d::DATE FROM UNNEST(COALESCE(y.dates_active_list, ARRAY[]::DATE[])) AS d),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- Additional query for conversion funnel analysis
+-- This can be run separately to understand user journey patterns
+WITH cleaned_events AS (
+    -- Data quality and performance improvements
+    SELECT 
+    e.user_id,
+    e.device_id,
+    e.event_time,
+    -- Clean and normalize URLs
     CASE 
-    WHEN t.user_id IS NOT NULL THEN ARRAY[t.today_date::DATE]
-    ELSE ARRAY[]::DATE[]
-    END
-    ) AS dates_active_list,
-        COALESCE(t.today_date, y.date + Interval '1 day') as date
-    FROM today t
-    FULL OUTER JOIN yesterday y
-    ON t.user_id = y.user_id;
+        WHEN lower(trim(e.url)) LIKE '/signup%'  THEN '/signup'
+        WHEN lower(trim(e.url)) LIKE '/contact%' THEN '/contact'
+        WHEN lower(trim(e.url)) LIKE '/login%'   THEN '/login'
+        ELSE lower(trim(e.url))
+    END AS normalized_url,
+    -- Extract domain from referrer for better categorization (Postgres)
+    CASE
+        WHEN coalesce(trim(e.referrer), '') = '' THEN NULL
+        WHEN lower(trim(e.referrer)) LIKE 'http%' THEN
+            substring(e.referrer FROM '^https?://(?:www\. )?([^/]+)')  -- capture domain
+        ELSE e.referrer
+    END AS referrer_domain
+FROM events e
+WHERE e.event_time::timestamp >= TIMESTAMP '2023-01-01 00:00:00'
+  AND e.event_time::timestamp <  TIMESTAMP '2023-02-01 00:00:00'
+  AND e.user_id IS NOT NULL
+  AND e.url IS NOT NULL
+),
 
-SELECT * FROM users_growth_accounting;
+referrer_mapped AS (
+    SELECT *,
+        CASE 
+            WHEN referrer_domain IN ('zachwilson.com', 'eczachly.com') THEN 'on-site'
+            WHEN referrer_domain IN ('t.co', 'twitter.com', 'x.com') THEN 'x.com'
+            WHEN referrer_domain LIKE '%google.%' OR referrer_domain = 'google.com' THEN 'google'
+            WHEN referrer_domain LIKE '%linkedin.%' OR referrer_domain = 'linkedin.com' THEN 'linkedin'
+            WHEN referrer_domain LIKE '%youtube.%' OR referrer_domain = 'youtube.com' THEN 'youtube'
+            WHEN referrer_domain LIKE '%bing.%' OR referrer_domain = 'bing.com' THEN 'bing'
+            WHEN referrer_domain LIKE '%facebook.%' OR referrer_domain = 'facebook.com' THEN 'facebook'
+            WHEN referrer_domain LIKE '%instagram.%' OR referrer_domain = 'instagram.com' THEN 'instagram'
+            WHEN referrer_domain LIKE '%reddit.%' OR referrer_domain = 'reddit.com' THEN 'reddit'
+            WHEN referrer_domain LIKE '%tiktok.%' OR referrer_domain = 'tiktok.com' THEN 'tiktok'
+            WHEN referrer_domain IS NULL THEN 'direct'
+            ELSE 'others'
+        END AS referrer_category
+    FROM cleaned_events
+),
+user_sessions AS (
+    -- Better approach: Analyze complete user journeys instead of just first events
+    SELECT 
+        rm.user_id,
+        d.browser_type,
+        d.os_type,
+        -- First touch attribution
+        FIRST_VALUE(rm.referrer_category) OVER (
+            PARTITION BY rm.user_id 
+            ORDER BY rm.event_time 
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS first_touch_referrer,
+        -- Last touch attribution  
+        LAST_VALUE(rm.referrer_category) OVER (
+            PARTITION BY rm.user_id 
+            ORDER BY rm.event_time 
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS last_touch_referrer,
+        rm.normalized_url,
+        rm.event_time,
+        -- Session indicators
+        ROW_NUMBER() OVER (PARTITION BY rm.user_id ORDER BY rm.event_time) as event_sequence
+    FROM referrer_mapped rm
+    JOIN devices d ON rm.device_id = d.device_id
+),
+
+user_summary AS (
+    -- Aggregate user-level metrics
+    SELECT 
+        user_id,
+        browser_type,
+        os_type,
+        first_touch_referrer,
+        last_touch_referrer,
+        COUNT(*) as total_page_views,
+        COUNT(DISTINCT normalized_url) as unique_pages_visited,
+        MAX(CASE WHEN normalized_url = '/signup' THEN 1 ELSE 0 END) as converted_signup,
+        MAX(CASE WHEN normalized_url = '/contact' THEN 1 ELSE 0 END) as visited_contact,
+        MAX(CASE WHEN normalized_url = '/login' THEN 1 ELSE 0 END) as visited_login,
+        MIN(event_time) as first_visit,
+        MAX(event_time) as last_visit
+    FROM user_sessions
+    GROUP BY user_id, browser_type, os_type, first_touch_referrer, last_touch_referrer
+),
+conversion_funnel AS (
+    SELECT 
+        first_touch_referrer,
+        COUNT(DISTINCT user_id) as total_users,
+        COUNT(DISTINCT CASE WHEN visited_contact = 1 THEN user_id END) as contacted,  
+        COUNT(DISTINCT CASE WHEN visited_login = 1 THEN user_id END) as attempted_login,
+        COUNT(DISTINCT CASE WHEN converted_signup = 1 THEN user_id END) as signed_up
+    FROM user_summary
+    GROUP BY first_touch_referrer
+)
+SELECT 
+    first_touch_referrer,
+    total_users,
+    contacted,
+    ROUND(100.0 * contacted / total_users, 2) as contact_rate,
+    attempted_login, 
+    ROUND(100.0 * attempted_login / total_users, 2) as login_attempt_rate,
+    signed_up,
+    ROUND(100.0 * signed_up / total_users, 2) as signup_rate
+FROM conversion_funnel
+ORDER BY total_users DESC;
