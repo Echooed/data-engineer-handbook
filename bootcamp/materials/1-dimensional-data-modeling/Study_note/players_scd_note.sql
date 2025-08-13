@@ -93,6 +93,3 @@ GROUP BY player_name, scoring_class, is_active, streak_identifier, max_current_s
 ORDER BY player_name, start_season;
 
 
-
-
-SELECT * FROM players_scd;

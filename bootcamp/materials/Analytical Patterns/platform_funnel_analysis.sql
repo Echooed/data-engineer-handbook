@@ -259,9 +259,7 @@ user_summary AS (
         MAX(event_time) as last_visit
     FROM user_sessions
     GROUP BY user_id, browser_type, os_type, first_touch_referrer, last_touch_referrer
-)
-SELECT * FROM user_summary WHERE user_id = '568596539987322000';
-
+),
 conversion_funnel AS (
     SELECT 
         first_touch_referrer,

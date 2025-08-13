@@ -55,6 +55,7 @@ unchanged_records AS (
       AND ts.is_active = ls.is_active
 ),
 
+
 changed_records AS (
     -- Players with changes: split into old and new rows
     SELECT 
