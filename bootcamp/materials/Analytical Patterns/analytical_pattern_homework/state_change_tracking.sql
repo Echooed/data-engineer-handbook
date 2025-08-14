@@ -40,8 +40,8 @@ SELECT
         WHEN ls.player_name IS NULL AND ps.player_name IS NOT NULL THEN 'new'
         WHEN ps.player_name IS NOT NULL AND ls.last_active_season = ps.season - 1 THEN 'continued Playing'
         WHEN ps.player_name IS NOT NULL AND ls.last_active_season < ps.season - 1 THEN 'Returned from Retirement'
-        WHEN ps.player_name IS NULL AND ls.player_name IS NOT NULL THEN 'Retired'
-        WHEN ps.player_name IS NULL AND last_active_season < ps.season - 2 THEN 'Stayed Retired'
+        WHEN ps.player_name IS NULL AND ls.season = ls.last_active_season THEN 'retired'  -- Just retired
+        WHEN ps.player_name IS NULL AND ls.season > ls.last_active_season THEN 'stayed_retired'  -- Already retire
         ELSE 'logic_error_caught'
     END as season_active_state,
 

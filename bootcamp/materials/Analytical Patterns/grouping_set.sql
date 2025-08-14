@@ -41,11 +41,3 @@ SELECT
     )
 --HAVING COUNT(1) = 100
 ORDER BY CAST(COUNT(CASE WHEN url = '/signup' THEN 1 END )AS REAL)/COUNT(1) DESC;
-
-
-
-
-
-
-
-
