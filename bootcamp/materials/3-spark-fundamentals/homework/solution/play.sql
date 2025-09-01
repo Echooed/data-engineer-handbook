@@ -1,1 +1,0 @@
-SELECT * FROM bucketed_match_details
